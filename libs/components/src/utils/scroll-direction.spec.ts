@@ -1,4 +1,4 @@
-import { ElementRef, Signal, signal } from "@angular/core";
+import { ElementRef, NgZone, Signal, provideZoneChangeDetection, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 
 import { ScrollDirection, scrollDirection } from "./scroll-direction";
@@ -35,6 +35,40 @@ describe("scrollDirection", () => {
 
   it("starts out scrolling up", () => {
     expect(create(signal(createScrollable()))()).toBe("up");
+  });
+
+  it("subscribes to scroll outside Angular and still updates its signal", async () => {
+    TestBed.configureTestingModule({ providers: [provideZoneChangeDetection()] });
+    const zone = TestBed.inject(NgZone);
+    const elements = [createScrollable(), createScrollable()];
+    const registrations: boolean[] = [];
+    for (const element of elements) {
+      const addEventListener = element.addEventListener.bind(element);
+      jest.spyOn(element, "addEventListener").mockImplementation((...args) => {
+        registrations.push(NgZone.isInAngularZone());
+        addEventListener(...args);
+      });
+    }
+    const source = signal<HTMLElement | null>(elements[0]);
+    const direction = zone.run(() => create(source));
+
+    for (const element of elements) {
+      zone.run(() => {
+        source.set(element);
+        TestBed.tick();
+      });
+      await zone.runOutsideAngular(() => scrollTo(element, 200));
+      expect(direction()).toBe("down");
+      await zone.runOutsideAngular(() => scrollTo(element, 0));
+      expect(direction()).toBe("up");
+    }
+    expect(registrations).toEqual([false, false]);
+    zone.run(() => {
+      source.set(null);
+      TestBed.tick();
+    });
+    await zone.runOutsideAngular(() => scrollTo(elements[1], 200));
+    expect(direction()).toBe("up");
   });
 
   it("accepts an ElementRef", async () => {

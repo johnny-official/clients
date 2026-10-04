@@ -1,10 +1,17 @@
-import { ChangeDetectionStrategy, Component, ElementRef, signal } from "@angular/core";
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  NgZone,
+  provideZoneChangeDetection,
+  signal,
+} from "@angular/core";
 import { ComponentFixture, TestBed } from "@angular/core/testing";
 
 import { CollapseOnScrollDirective } from "./collapse-on-scroll.directive";
 import { ScrollCollapseSourceDirective } from "./scroll-collapse-source.directive";
 import { ScrollCollapseService } from "./scroll-collapse.service";
-import { ScrollLayoutService } from "./scroll-layout.directive";
+import { ScrollLayoutDirective, ScrollLayoutService } from "./scroll-layout.directive";
 
 /** jsdom reports `0` for every layout measurement, so the geometry is stubbed and events faked. */
 const stubGeometry = (element: HTMLElement, scrollHeight: number, clientHeight: number) => {
@@ -36,6 +43,66 @@ class TestHostComponent {
   readonly collapse = signal(true);
   readonly showRegion = signal(true);
 }
+
+@Component({
+  template: `<div bitScrollLayout></div>`,
+  imports: [ScrollLayoutDirective],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+class ScrollLayoutTestHostComponent {}
+
+describe("ScrollLayoutDirective.elementScrolled", () => {
+  it("registers outside Angular for each host, clears removed hosts, and tears down", async () => {
+    await TestBed.configureTestingModule({
+      imports: [ScrollLayoutTestHostComponent],
+      providers: [provideZoneChangeDetection()],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ScrollLayoutTestHostComponent);
+    const zone = TestBed.inject(NgZone);
+    const service = TestBed.inject(ScrollLayoutService);
+    const directive = fixture.debugElement.children[0].injector.get(ScrollLayoutDirective);
+    const elements = [document.createElement("div"), document.createElement("div")];
+    const registrations: boolean[] = [];
+    for (const element of elements) {
+      const addEventListener = element.addEventListener.bind(element);
+      jest.spyOn(element, "addEventListener").mockImplementation((...args) => {
+        registrations.push(NgZone.isInAngularZone());
+        addEventListener(...args);
+      });
+    }
+    const missingHost = jest.spyOn(console, "error").mockImplementation(() => {});
+    const received: Event[] = [];
+    const subscription = zone.run(() =>
+      directive.elementScrolled().subscribe((event) => received.push(event)),
+    );
+
+    for (const element of elements) {
+      zone.run(() => {
+        service.scrollableRef.set(new ElementRef(element));
+        TestBed.tick();
+      });
+      element.dispatchEvent(new Event("scroll"));
+    }
+    expect(received).toHaveLength(2);
+    expect(registrations.length).toBeGreaterThanOrEqual(2);
+    expect(registrations.every((inside) => !inside)).toBe(true);
+
+    zone.run(() => {
+      service.scrollableRef.set(null);
+      TestBed.tick();
+    });
+    elements[1].dispatchEvent(new Event("scroll"));
+    expect(received).toHaveLength(2);
+
+    subscription.unsubscribe();
+    elements[1].dispatchEvent(new Event("scroll"));
+    service.scrollableRef.set(new ElementRef(document.createElement("div")));
+    TestBed.tick();
+    expect(received).toHaveLength(2);
+    fixture.destroy();
+    missingHost.mockRestore();
+  });
+});
 
 describe("scroll collapse", () => {
   let fixture: ComponentFixture<TestHostComponent>;

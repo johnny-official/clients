@@ -1,6 +1,6 @@
-import { ElementRef, Signal } from "@angular/core";
+import { ElementRef, NgZone, Signal, inject } from "@angular/core";
 import { toObservable, toSignal } from "@angular/core/rxjs-interop";
-import { animationFrameScheduler, fromEvent, of } from "rxjs";
+import { Observable, animationFrameScheduler, fromEvent, of } from "rxjs";
 import { auditTime, distinctUntilChanged, map, scan, startWith, switchMap } from "rxjs/operators";
 
 /** Which way the user is currently moving through a scrollable region. */
@@ -81,6 +81,7 @@ export const scrollDirection = (
 ): Signal<ScrollDirection> => {
   const readMinScrollable =
     typeof minScrollable === "function" ? minScrollable : () => minScrollable;
+  const ngZone = inject(NgZone);
 
   const element$ = toObservable(scrollable).pipe(map(nativeElement));
 
@@ -90,7 +91,9 @@ export const scrollDirection = (
         return of<ScrollDirection>("up");
       }
 
-      return fromEvent(element, "scroll").pipe(
+      return new Observable<Event>((subscriber) =>
+        ngZone.runOutsideAngular(() => fromEvent(element, "scroll").subscribe(subscriber)),
+      ).pipe(
         auditTime(0, animationFrameScheduler),
         startWith(null),
         map(() => ({

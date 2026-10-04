@@ -1,6 +1,6 @@
-import { DestroyRef, Directive, ElementRef, inject } from "@angular/core";
+import { DestroyRef, Directive, ElementRef, NgZone, inject } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { fromEvent } from "rxjs";
+import { Observable, fromEvent } from "rxjs";
 
 import { ScrollCollapseService } from "./scroll-collapse.service";
 
@@ -33,6 +33,7 @@ export class ScrollCollapseSourceDirective {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly service = inject(ScrollCollapseService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly ngZone = inject(NgZone);
 
   /** The scroller last reported, so only that one is cleared on destroy. */
   private reported: HTMLElement | null = null;
@@ -40,7 +41,11 @@ export class ScrollCollapseSourceDirective {
   constructor() {
     // `scroll` doesn't bubble, but a capture listener still observes it, so the scrolling
     // descendant identifies itself as the event target — nothing to re-resolve when the DOM changes.
-    fromEvent(this.host.nativeElement, "scroll", { capture: true })
+    new Observable<Event>((subscriber) =>
+      this.ngZone.runOutsideAngular(() =>
+        fromEvent(this.host.nativeElement, "scroll", { capture: true }).subscribe(subscriber),
+      ),
+    )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event) => {
         const target = event.target;

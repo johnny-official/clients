@@ -1,6 +1,6 @@
-import { Injectable, Signal, computed, inject, signal } from "@angular/core";
+import { Injectable, NgZone, Signal, computed, inject, signal } from "@angular/core";
 import { toObservable, toSignal } from "@angular/core/rxjs-interop";
-import { fromEvent, map, of, startWith, switchMap } from "rxjs";
+import { Observable, fromEvent, map, of, startWith, switchMap } from "rxjs";
 
 import { ScrollDirection, scrollDirection } from "../utils/scroll-direction";
 
@@ -25,6 +25,7 @@ export type CollapseRegion = {
 @Injectable({ providedIn: "root" })
 export class ScrollCollapseService {
   private readonly scrollLayout = inject(ScrollLayoutService);
+  private readonly ngZone = inject(NgZone);
 
   /** The element last reported by `ScrollCollapseSourceDirective`. */
   private readonly reportedSource = signal<HTMLElement | null>(null);
@@ -60,7 +61,11 @@ export class ScrollCollapseService {
     toObservable(this.source).pipe(
       switchMap((element) =>
         element
-          ? fromEvent(element, "scroll").pipe(
+          ? new Observable<Event>((subscriber) =>
+              this.ngZone.runOutsideAngular(() =>
+                fromEvent(element, "scroll").subscribe(subscriber),
+              ),
+            ).pipe(
               startWith(null),
               map(() => element.scrollTop !== 0),
             )

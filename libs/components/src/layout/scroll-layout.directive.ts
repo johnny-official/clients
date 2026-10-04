@@ -10,7 +10,7 @@ import {
   signal,
 } from "@angular/core";
 import { toObservable } from "@angular/core/rxjs-interop";
-import { filter, fromEvent, Observable, switchMap } from "rxjs";
+import { EMPTY, fromEvent, Observable, switchMap } from "rxjs";
 
 /**
  * A service is needed because we can't inject a directive defined in the template of a parent component. The parent's template is initialized after projected content.
@@ -85,8 +85,15 @@ export class ScrollLayoutDirective extends CdkVirtualScrollable implements OnIni
 
   override elementScrolled(): Observable<Event> {
     return this.service.scrollableRef$.pipe(
-      filter((ref) => ref !== null),
-      switchMap((ref) => fromEvent(ref.nativeElement, "scroll")),
+      switchMap((ref) =>
+        ref
+          ? new Observable<Event>((subscriber) =>
+              this.ngZone.runOutsideAngular(() =>
+                fromEvent(ref.nativeElement, "scroll").subscribe(subscriber),
+              ),
+            )
+          : EMPTY,
+      ),
     );
   }
 
