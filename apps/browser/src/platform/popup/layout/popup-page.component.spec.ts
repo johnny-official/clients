@@ -108,6 +108,23 @@ describe("PopupPageComponent", () => {
     });
   });
 
+  it("renders the loading spinner only while loading", () => {
+    const spinner = (): HTMLElement | null =>
+      fixture.nativeElement.querySelector("bit-icon.bwi-spin");
+
+    expect(spinner()).toBeNull();
+
+    host.loading.set(true);
+    fixture.detectChanges();
+
+    expect(spinner()).not.toBeNull();
+
+    host.loading.set(false);
+    fixture.detectChanges();
+
+    expect(spinner()).toBeNull();
+  });
+
   it("projects content into the floating action slot", () => {
     expect(floatingAction()).not.toBeNull();
   });
